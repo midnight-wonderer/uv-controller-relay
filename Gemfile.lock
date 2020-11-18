@@ -1,0 +1,15 @@
+GEM
+  remote: https://rubygems.org/
+  specs:
+    posix-spawn (0.3.15)
+    rake (13.0.1)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  posix-spawn
+  rake
+
+BUNDLED WITH
+   2.1.4

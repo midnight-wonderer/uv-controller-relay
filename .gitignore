@@ -1,0 +1,7 @@
+# editors
+/.vscode
+/.idea
+
+# builds
+/sdkconfig.*
+/build
