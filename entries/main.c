@@ -1,33 +1,15 @@
 #include "config/wemos_pin.h"
 #include "driver/gpio.h"
-#include "entries/udp_server.h"
-#include "entries/wifi.h"
-#include "modules/begin_beat.h"
-#include "modules/end_beat.h"
-#include "modules/tick_timer.h"
-#include <stdbool.h>
-
-#include "freertos/FreeRTOS.h"
-#include "freertos/timers.h"
 
 #define BUZZER_PIN D5
 #define RELAY_PIN D2
 
-// shared timers
-// - 60 ms
-// - 500 ms
-// - 1 s
-// derived params
-#define TIMER_GCD (20)   // ms
-#define TIMER_LCM (3000) // ms
-#define TIMER_60_SCALER (60 / TIMER_GCD)
-#define TIMER_500_SCALER (500 / TIMER_GCD)
-#define TIMER_SCALER_MODULAR (TIMER_LCM / TIMER_GCD)
-#define TIMER_TICK_PER_SECOND (1000 / 500)
-#define TIMER_SECOND_TO_TICK(second) ((second)*TIMER_TICK_PER_SECOND)
-
-static xTimerHandle shared_signal;
-static bool waiting_for_command = true;
+// ###############################
+// #     MEMORY ALLOCATIONS      #
+// ###############################
+#include "modules/begin_beat.h"
+#include "modules/end_beat.h"
+#include "modules/tick_timer.h"
 
 static void main_timer_started(void);
 static void main_timer_finished(void);
@@ -36,13 +18,6 @@ static const TickTimer_Config main_timer_config = {
     .finished = &main_timer_finished,
 };
 static TickTimer_State main_timer_state;
-static void main_timer_started(void) { gpio_set_level(RELAY_PIN, true); }
-static const EndBeat_Config end_beat_config; // prototype
-static EndBeat_State end_beat_state;         // prototype
-static void main_timer_finished(void) {
-  gpio_set_level(RELAY_PIN, false);
-  end_beat__start(&end_beat_config, &end_beat_state);
-}
 
 static void beat_output(bool turn_on);
 static void begin_beat_finished(void);
@@ -59,13 +34,45 @@ static const EndBeat_Config end_beat_config = {
 };
 static BeginBeat_State begin_beat_state;
 static EndBeat_State end_beat_state;
+
+// ###############################
+// #           SHARED            #
+// ###############################
+
+// shared timers
+// - 60 ms
+// - 500 ms
+// - 1 s
+// derived params
+#define TIMER_GCD (20)   // ms
+#define TIMER_LCM (3000) // ms
+#define TIMER_60_SCALER (60 / TIMER_GCD)
+#define TIMER_500_SCALER (500 / TIMER_GCD)
+#define TIMER_SCALER_MODULAR (TIMER_LCM / TIMER_GCD)
+#define TIMER_TICK_PER_SECOND (1000 / 500)
+#define TIMER_SECOND_TO_TICK(second) ((second)*TIMER_TICK_PER_SECOND)
+
+// ###############################
+// #         EVENT FLOWS         #
+// ###############################
+#include <stdbool.h>
+
+static bool waiting_for_command = true;
 static void beat_output(bool turn_on) { gpio_set_level(BUZZER_PIN, !turn_on); }
 static void begin_beat_started(void) { waiting_for_command = false; }
 static void begin_beat_finished(void) {
   tick_timer__start(&main_timer_config, &main_timer_state,
                     TIMER_SECOND_TO_TICK(3));
 }
+static void main_timer_started(void) { gpio_set_level(RELAY_PIN, true); }
+static void main_timer_finished(void) {
+  gpio_set_level(RELAY_PIN, false);
+  end_beat__start(&end_beat_config, &end_beat_state);
+}
 static void end_beat_finished(void) { waiting_for_command = true; }
+
+#include "entries/udp_server.h"
+#include "entries/wifi.h"
 
 void udp_received(uint8_t *buffer, uint8_t length) {
   if (waiting_for_command)
@@ -77,7 +84,15 @@ void udp_received(uint8_t *buffer, uint8_t length) {
 void wifi_connected(void) { udp_listen(); }
 void wifi_disconnected(void) { udp_close(); }
 
+// ###############################
+// #       PLATFORM SETUP        #
+// ###############################
+#include "freertos/FreeRTOS.h"
+#include "freertos/timers.h"
+
+static xTimerHandle shared_signal;
 static void tick(xTimerHandle);
+
 void app_main() {
   gpio_config_t io_conf;
   io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
