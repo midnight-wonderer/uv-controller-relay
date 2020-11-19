@@ -1,5 +1,6 @@
 require 'posix/spawn'
 require 'securerandom'
+require 'shellwords'
 
 MAKE_COMMAND = 'make'
 PLATFORM_MAKEFILE = 'esp-platform.mk'
@@ -92,6 +93,11 @@ rule '.o' => [map_object_to_source] do |task|
   ::POSIX::Spawn.system(
     esp_variables.cc,
     *esp_variables.cc_params.split(/\s+/),
+    "-Wa,-a,-ad,-alms=#{
+      task.name
+      .sub(/\.o\z/, '.lst')
+      .then(&::Shellwords.method(:escape))
+    }",
     *APPLICATION_INCLUDE_PATHS.map do |path|
       "-I#{path}"
     end,
